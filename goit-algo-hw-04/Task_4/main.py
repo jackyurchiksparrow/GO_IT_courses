@@ -1,5 +1,3 @@
-import sys
-
 from contacts.contacts_interaction import *
 
 def parse_input(inp: str, contacts: dict):
@@ -18,28 +16,25 @@ def parse_input(inp: str, contacts: dict):
             a dictionary with contacts to work with
 
     Returns:
-        -
+        str logs
     """
     command, *args = inp.strip().lower().split(" ")
 
     match command:
         case "hello":
-            print("How can I help you?")
+            return "How can I help you?"
         case add if "add" in command:
-            if add_contact(args, contacts):
-                print("Contact added.")
+            return add_contact(args, contacts)
         case change if "change" in command:
-            if change_contact(args, contacts):
-                print("Contact updated.")
+            return change_contact(args, contacts)
         case phone if "phone" in command:
-            show_phone(args, contacts)
+            return show_phone(args, contacts)
         case all if "all" in command:
-            show_all(contacts)
+            return show_all(contacts)
         case exit if command in ["close", "exit"]:
-            print("Good bye!")
-            sys.exit()
+            return "Good bye!"
         case _:
-            print("Invalid command.")
+            return "Invalid command."
 
 
 def main():
@@ -58,7 +53,15 @@ def main():
     print("Welcome to the assistant bot!")
     while True:
         inp = input("Enter a command: ")
-        parse_input(inp, contacts)
+        result = parse_input(inp, contacts)
+
+        print(result)
+
+        if result == "Good bye!":
+            break
+        elif result == "Show all contacts":
+            for name, num in contacts.items():
+                print(f"{name} : {num}")
 
 
 if __name__ == "__main__":
