@@ -32,7 +32,8 @@ def generator_numbers(text: str) -> Callable:
         except ValueError:
             return False
 
-    return filter(lambda x: is_real_num(x), text.split(" "))
+    splitted_text = text.split(" ")
+    return filter(lambda x: is_real_num(x), splitted_text[1:-1]) # since the first and the last elements can't ever be separated with spaced from both sides -> ignore them
 
 
 def sum_profit(text: str, func: Callable) -> float:
@@ -52,7 +53,7 @@ def sum_profit(text: str, func: Callable) -> float:
 
 
 if __name__ == "__main__":
-    text = "Загальний дохід працівника складається з декількох частин: 1000.01 як основний дохід, доповнений додатковими надходженнями 27.45 і 324.00 доларів."
+    text = "22 Загальний дохід працівника складається з декількох частин: 1000.01 як основний дохід, доповнений додатковими надходженнями 27.45 і 324.00 доларів. 28"
     #text2 = "fff   0.2   05.55 06 3gwtg wgegweg weg052 25g oogafg"
 
     total_income = sum_profit(text, generator_numbers)

@@ -77,12 +77,8 @@ def show_phone(args: List, contacts: dict):
     """
     
     name = args[0]
+    return contacts[name]
 
-    # if the contact is in contacts, print it, otherwise - notify and return
-    if name in contacts:
-        return contacts[name]
-    else:
-        return f"Contact '{name}' doesn't exist."
 
 @input_error
 def show_all(contacts: dict):

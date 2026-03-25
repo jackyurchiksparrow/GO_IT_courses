@@ -21,17 +21,17 @@ def parse_input(inp: str, contacts: dict):
     command, *args = inp.strip().lower().split(" ")
 
     match command:
-        case "hello":
+        case 'hello':
             return "How can I help you?"
-        case add if "add" in command:
+        case 'add':
             return add_contact(args, contacts)
-        case change if "change" in command:
+        case 'change':
             return change_contact(args, contacts)
-        case phone if "phone" in command:
+        case 'phone':
             return show_phone(args, contacts)
-        case all if "all" in command:
+        case 'all':
             return show_all(contacts)
-        case exit if command in ["close", "exit"]:
+        case 'exit' | 'close':
             return "Good bye!"
         case _:
             return "Invalid command."
