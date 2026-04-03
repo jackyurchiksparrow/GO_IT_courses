@@ -17,7 +17,14 @@ class Name(Field):
 class Phone(Field):
     """Class for storing a phone number with 10-digit validation."""
     def __init__(self, phone_num: str):
-        if sum(ch.isdigit() for ch in phone_num) != 10: # we don't perform the length check deliberately, the task doesn't specify
+        dig_sum = 0
+        for ch in phone_num:
+            if ch.isdigit():
+                dig_sum += 1
+            else:   # we also forbid "+" because 10 digits means no country code
+                raise ValueError(f"Phone number may only numbers and exactly 10 of them")
+        
+        if dig_sum != 10:
             raise ValueError("Phone number must contain exactly 10 digits!")
 
         super().__init__(phone_num) # call the parent constructor to save the attribute value
@@ -37,19 +44,23 @@ class Record:
 
     def remove_phone(self, phone_num: str):
         """Removes a phone number from the record if it exists."""
-        self.phones = [p for p in self.phones if p.value != phone_num]
+        phone_obj = self.find_phone(phone_num)
+        
+        if phone_obj:
+            self.phones.remove(phone_obj)
 
     def edit_phone(self, old_phone_num: str, new_phone_num : str):
         """
         Replaces an existing phone number with a new one.
         Raises ValueError if the old number is not found.
         """
-        for i, num in enumerate(self.phones):
-            if num.value == old_phone_num:
-                self.phones[i] = Phone(new_phone_num)
-                return True
-        
-        raise ValueError(f"Number doesn't exist: {old_phone_num}")
+        phone_obj = self.find_phone(old_phone_num)
+
+        if phone_obj:
+            self.add_phone(new_phone_num)
+            self.remove_phone(old_phone_num)
+        else:
+            raise ValueError(f"Number doesn't exist: {old_phone_num}")
     
     def find_phone(self, phone_num: str):
         """Returns a Phone object if it exists in the record, else None."""
@@ -83,10 +94,7 @@ class AddressBook(UserDict):
 
     def find(self, name: str):
         """Finds a Record object by name. Returns None if not found."""
-        if name not in self.data:
-            return None
-        
-        return self.data[name]
+        return self.data.get(name, None)
     
     def delete(self, name: str):
         """Removes a record from the address book by name."""
