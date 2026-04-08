@@ -2,155 +2,6 @@ from collections import UserDict
 from datetime import datetime, date, timedelta
 from typing import List
 
-
-def input_error(func):
-    def inner(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except ValueError as v_err:
-            return f"{v_err}"
-        except KeyError:
-            return "Contact not found."
-        except IndexError:
-            return "Invalid number of arguments. Please check the command syntax."
-        except AttributeError:
-            return "Contact does not exist."
-        
-    return inner
-
-
-@input_error
-def change_contact(args: List, book: 'AddressBook'):
-    """Syntax: change <name> <old_number> <new_number>
-    
-    Args:
-        args: list
-        book: AddressBook
-    """
-    
-    name, old_number, new_number = args
-
-    person_record = book.find(name)
-    if person_record:
-        person_record.edit_phone(old_number, new_number)
-    else:
-        return f"Contact '{name}' isn't in contacts. Please, use 'add <unique_contact_name> <contact_number>' if you'd like to add them."
-
-    
-    return "Contact updated."
-
-@input_error
-def add_contact(args: List, book: 'AddressBook'):
-    """Syntax: add <name> <phone1> <phone2> ...
-    If the contact exists, adds unique numbers
-    
-    Args:
-        args: list
-            an ordered list of params to parse, expects 3+
-        book: AddressBook
-    """
-    
-    name, *numbers = args
-
-    # if name is not unique
-    if name in book:
-        contacts_added = 0
-        person_rec = book.find(name)
-        for num in numbers:
-            if not person_rec.find_phone(num):
-                person_rec.add_phone(num)
-                contacts_added += 1
-        if contacts_added > 0:
-            return "Contact updated"
-        return f"The phone numbers already present for '{name}'"
-
-    new_record = Record(name)
-    for num in numbers:
-        new_record.add_phone(num)
-
-    book.add_record(new_record)
- 
-    return "Contact added."
-
-@input_error
-def show_phone(args: List, book: 'AddressBook'):
-    """Prints the contact entry from AddressBook if exists
-    Syntax: phone <name>
-    
-    Args:
-        args: list
-            an ordered list of params to parse, expects 1
-        book: AddressBook
-    """
-    
-    name = args[0]
-    
-    person_record = book.find(name)
-    if not person_record:
-        return f"'{name}' is not in contacts"
-    
-    return person_record
-
-@input_error
-def show_all(book: 'AddressBook'):
-    """Prints all Record entries from input_error
-    Syntax: all
-
-    Args:
-        book: AddressBook
-    """
-
-    if not book:
-        return "There are no contacts to print"
-
-    return "Show all contacts"
-
-@input_error
-def add_birthday(args, book: 'AddressBook'):
-    """Syntax: add-birthday <name> <birth date: str(DD.MM.YY)>
-    Adds a valid birthday date to a contact if record exists
-
-    Args:
-        book: AddressBook
-        args: list
-            an ordered list of params to parse, expects 2
-
-    """
-    name, date = args
-
-    person_rec = book.find(name)
-    person_rec.add_birthday(date)
-
-    return "Birthday added"
-
-@input_error
-def show_birthday(args, book: 'AddressBook'):
-    """Syntax: show-birthday <name>
-    Shows birthday date of a contact if set
-
-    Args:
-        book: AddressBook
-
-    """
-    name = args[0]
-    return book.find(name).birthday or "Birthday isn't set"
-
-@input_error
-def birthdays(book: 'AddressBook'):
-    """Syntax: birthdays
-    Returns all birthday dates in the near future (7 days)
-
-    Args:
-        book: AddressBook
-
-    """
-    upcoming_birthdays = book.get_upcoming_birthdays()
-    
-    if not upcoming_birthdays:
-        return "No upcoming birthdays"
-    
-    return upcoming_birthdays
-
 class Field:
     """Base class for record fields."""
     def __init__(self, field_val):
@@ -181,12 +32,12 @@ class Phone(Field):
         super().__init__(phone_num) # call the parent constructor to save the attribute value
 
 class Birthday(Field):
-    def __init__(self, value):
+    def __init__(self, value: str):
         try:
-            dt_birthday = datetime.strptime(value, "%d.%m.%Y")
-            super().__init__(dt_birthday)
+            birthday_dt = datetime.strptime(value, "%d.%m.%Y")
+            super().__init__(datetime.strftime(birthday_dt, "%d.%m.%Y"))
         except ValueError:
-            raise ValueError("Invalid date format. Use a STRING with a format of DD.MM.YYYY")
+            raise ValueError("Invalid date format. Use DD.MM.YYYY")
 
 
 class Record:
@@ -231,8 +82,8 @@ class Record:
 
         return None
     
-    def add_birthday(self, birthday_dt: str):
-        self.birthday = Birthday(birthday_dt)
+    def add_birthday(self, birthday: str):
+        self.birthday = Birthday(birthday)
 
     # string representation for the class objects for printing
     def __str__(self):
@@ -273,6 +124,9 @@ class AddressBook(UserDict):
         
         def _date_to_string(date):
             return date.strftime("%d.%m.%Y")
+        
+        def _string_to_date(date_str):
+            return datetime.strptime(date_str, "%d.%m.%Y").date()
 
         def _adjust_for_weekend(birthday):
             if birthday.weekday() >= 5:
@@ -288,7 +142,7 @@ class AddressBook(UserDict):
                 continue
             
             # Встановлюємо дату народження на поточний рік
-            birthday_this_year = usr_data.birthday.value.replace(year=today.year).date()
+            birthday_this_year = _string_to_date(usr_data.birthday.value).replace(year=today.year)
 
             # 1. Перевіряємо, чи не минув день народження вже в цьому році
             if birthday_this_year < today:
@@ -317,8 +171,144 @@ def parse_input(inp: str):
 
     """
     command, *args = inp.strip().lower().split(" ")
-
     return command, *args
+
+
+def input_error(func):
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ValueError as v_err:
+            return f"{v_err}"
+        except KeyError:
+            return "Contact not found."
+        except IndexError:
+            return "Invalid number of arguments. Please check the command syntax."
+        except AttributeError:
+            return "Contact does not exist."
+        
+    return inner
+
+
+@input_error
+def change_contact(args: List, book: AddressBook):
+    """Syntax: change <name> <old_number> <new_number>
+    
+    Args:
+        args: list
+        book: AddressBook
+    """
+    
+    name, old_number, new_number = args
+
+    person_record = book.find(name)
+    person_record.edit_phone(old_number, new_number)
+    return "Contact updated."
+
+@input_error
+def add_contact(args: List, book: AddressBook):
+    """Syntax: add <name> <phone1> <phone2> ...
+    If the contact exists, adds unique numbers
+    
+    Args:
+        args: list
+            an ordered list of params to parse, expects 3+
+        book: AddressBook
+    """
+    
+    name, *numbers = args
+
+    # if name is not unique
+    if name in book:
+        contacts_added = 0
+        person_rec = book.find(name)
+        for num in numbers:
+            if not person_rec.find_phone(num):
+                person_rec.add_phone(num)
+                contacts_added += 1
+        if contacts_added > 0:
+            return "Contact updated"
+        return f"The phone numbers already present for '{name}'"
+
+    new_record = Record(name)
+    for num in numbers:
+        new_record.add_phone(num)
+
+    book.add_record(new_record)
+ 
+    return "Contact added."
+
+@input_error
+def show_phone(args: List, book: AddressBook):
+    """Prints the contact entry from AddressBook if exists
+    Syntax: phone <name>
+    
+    Args:
+        args: list
+            an ordered list of params to parse, expects 1
+        book: AddressBook
+    """
+    
+    name = args[0]
+    
+    person_record = book.find(name)
+    return person_record
+
+@input_error
+def show_all(book: AddressBook):
+    """Prints all Record entries from input_error
+    Syntax: all
+
+    Args:
+        book: AddressBook
+    """
+
+    return book or "There are no contacts to print"
+
+@input_error
+def add_birthday(args, book: AddressBook):
+    """Syntax: add-birthday <name> <birth date: str(DD.MM.YY)>
+    Adds a valid birthday date to a contact if record exists
+
+    Args:
+        book: AddressBook
+        args: list
+            an ordered list of params to parse, expects 2
+
+    """
+    name, date = args
+
+    person_rec = book.find(name)
+    person_rec.add_birthday(date)
+
+    return "Birthday added"
+
+@input_error
+def show_birthday(args, book: AddressBook):
+    """Syntax: show-birthday <name>
+    Shows birthday date of a contact if set
+
+    Args:
+        book: AddressBook
+
+    """
+    name = args[0]
+    return book.find(name).birthday or "Birthday isn't set"
+
+@input_error
+def birthdays(book: AddressBook):
+    """Syntax: birthdays
+    Returns all birthday dates in the near future (7 days)
+
+    Args:
+        book: AddressBook
+
+    """
+    upcoming_birthdays = book.get_upcoming_birthdays()
+    
+    lines = [f"{rec['name']} : {rec['birthday']}" for rec in upcoming_birthdays]
+    return "\n".join(lines) or "No upcoming birthdays"
+
 
 def main():
     print("Welcome to the assistant bot!")
@@ -344,12 +334,7 @@ def main():
             case 'show-birthday':
                 print(show_birthday(args, book))
             case "birthdays":
-                upcoming_birthdays = birthdays(book)
-                if not isinstance(upcoming_birthdays, str):
-                    for rec in upcoming_birthdays:
-                        print(f"{rec['name']} : {rec['birthday']}")
-                else:
-                    print(upcoming_birthdays)
+                print(birthdays(book))
             case 'exit' | 'close':
                 print("Good bye!")
                 break
