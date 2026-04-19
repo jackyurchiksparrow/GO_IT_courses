@@ -1,5 +1,5 @@
 [project]
-name = "goit-ds-hw-01"
+name = "goit-ds-hw-02"
 version = "0.1.0"
 description = ""
 authors = [
@@ -7,6 +7,7 @@ authors = [
 ]
 requires-python = ">=3.11, <4.0"
 dependencies = [
+    "faker (>=40.15.0,<41.0.0)"
 ]
 
 [tool.poetry]
