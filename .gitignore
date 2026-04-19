@@ -6,3 +6,9 @@ venv/
 .venv/
 env/
 .env/
+
+# Python Cache & Compiled Files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
