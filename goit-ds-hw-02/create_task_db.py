@@ -1,7 +1,8 @@
 import sqlite3
 
 
-def create_db():
+def create_db() -> None:
+    """Initializes the database schema by executing the provided .sql script."""
     # read the .sql script
     with open("create_task_db.sql", "r", encoding="utf-8") as f:
         sql = f.read()

@@ -37,24 +37,3 @@ CREATE TABLE tasks (
 		ON DELETE CASCADE
 		ON UPDATE CASCADE
 );
-
---INSERT INTO users(fullname, email) VALUES("Anastasia Kolpakova", "kolpalova@ukr.net");
---INSERT INTO users(fullname, email) VALUES("Dmitryi Sober", "darkdeus@ukr.net");
---INSERT INTO users(fullname, email) VALUES("Daniil Bronycagevich", "bronycage@ukr.net");
---
---INSERT INTO status(name) VALUES("new");
---INSERT INTO status(name) VALUES("in progress");
---INSERT INTO status(name) VALUES("completed");
---
---SELECT * FROM status;
---SELECT * FROM users;
---
---INSERT INTO tasks(title, description, status_id, user_id) VALUES("Bake pretzels", "Use the rye starter", 1, 3);
---INSERT INTO tasks(title, description, status_id, user_id) VALUES("Close nether", "All characters", 2, 1);
---INSERT INTO tasks(title, description, status_id, user_id) VALUES("Do not drink", "Do not drink alcohol", 3, 2);
---
---SELECT * FROM tasks;
---
---DELETE FROM users where id==2;
---
---SELECT * FROM tasks; -- "do not drink" is still there
