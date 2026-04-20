@@ -1,5 +1,5 @@
 --Отримати всі завдання певного користувача. Використайте SELECT для отримання завдань конкретного користувача за його user_id.
-SELECT title, descriptionFROM tasks WHERE user_id = 5;
+SELECT title, description FROM tasks WHERE user_id = 5;
 --Вибрати завдання за певним статусом. Використайте підзапит для вибору завдань з конкретним статусом, наприклад, 'new'.
 SELECT title, description FROM tasks 
 WHERE status_id IN (SELECT id FROM status WHERE id = 1);
