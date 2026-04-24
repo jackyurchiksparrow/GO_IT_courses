@@ -1,9 +1,27 @@
 from pymongo import MongoClient
 from pymongo.database import Database
 from pymongo.errors import ConnectionFailure
+from pymongo.server_api import ServerApi
 
 
-def connect_to_db(port="27017"):
+def connect_to_db_atlas(uri: str):
+    # Points to the local Docker container
+    client = MongoClient(uri, server_api=ServerApi("1"), serverSelectionTimeoutMS=5000)
+    # Send a ping to confirm a successful connection
+    try:
+        client.admin.command("ping")
+        print("✅ Successfully connected to MongoDB Atlas!")
+    except ConnectionFailure:
+        print("❌ Could not connect to MongoDB Atlas. Is the cluster created and credentials ok?")
+    else:
+        # if no exceptions raised
+        return client
+
+    return None
+
+
+# just for practice, irrelevant to the assignment
+def connect_to_db_local(port="27017"):
     # Points to the local Docker container
     client = MongoClient(f"mongodb://localhost:{port}/", serverSelectionTimeoutMS=5000)
     # Send a ping to confirm a successful connection
@@ -19,29 +37,13 @@ def connect_to_db(port="27017"):
     return None
 
 
-def populate_db(db: Database) -> None:
-    inserted = db.cats.insert_many(
+def populate_db(db: Database, collection_name: str) -> None:
+    inserted = db[collection_name].insert_many(
         [
-            {
-                "name": "Murzik",
-                "age": 1,
-                "features": ["ходить в капці", "дає себе гладити", "чорний"],
-            },
-            {
-                "name": "barsik",
-                "age": 3,
-                "features": ["ходить в капці", "дає себе гладити", "рудий"],
-            },
-            {
-                "name": "Lama",
-                "age": 2,
-                "features": ["ходить в лоток", "не дає себе гладити", "сірий"],
-            },
-            {
-                "name": "Liza",
-                "age": 4,
-                "features": ["ходить в лоток", "дає себе гладити", "білий"],
-            },
+            {"name": "Murzik", "age": 1, "features": ["ходить в капці", "дає себе гладити", "чорний"]},
+            {"name": "barsik", "age": 3, "features": ["ходить в капці", "дає себе гладити", "рудий"]},
+            {"name": "Lama", "age": 2, "features": ["ходить в лоток", "не дає себе гладити", "сірий"]},
+            {"name": "Liza", "age": 4, "features": ["ходить в лоток", "дає себе гладити", "білий"]},
         ],
     )
 
@@ -63,7 +65,7 @@ def find_one_by_name(db: Database, name: str) -> dict | None:
 
 def read_by_name(db: Database, name: str) -> None:
     found = find_one_by_name(db, name)
-    if found.matched_count > 0:
+    if found:
         print(f"✅ Cat '{name}' found: {found}")
     else:
         print(f"❌ No cat found with the name '{name}'.")
@@ -77,12 +79,10 @@ def update_age_by_name(db: Database, name: str, new_age) -> None:
 
     if updated.matched_count > 0:
         if updated.modified_count > 0:
-            print(f"✅ Successfully updated age for '{name}'.")
+            print(f"✅ Successfully updated age for '{name}' to '{new_age}'.")
             read_by_name(db, name)
         else:
-            print(
-                f"Cat '{name}' found, but age was already {new_age}. No changes made."
-            )
+            print(f"Cat '{name}' found, but age was already {new_age}. No changes made.")
     else:
         print(f"❌ No cat found with the name '{name}'.")
 
@@ -95,14 +95,10 @@ def update_append_feature(db: Database, name: str, new_feature: str) -> None:
 
     if updated.matched_count > 0:
         if updated.modified_count > 0:
-            print(
-                f"✅ Successfully updated features for '{name}' with '{new_feature}'."
-            )
+            print(f"✅ Successfully updated features for '{name}' with '{new_feature}'.")
             read_by_name(db, name)
         else:
-            print(
-                f"Cat '{name}' found, but features already had {new_feature}. No changes made."
-            )
+            print(f"Cat '{name}' found, but features already had {new_feature}. No changes made.")
     else:
         print(f"❌ No cat found with the name '{name}'.")
 
@@ -126,9 +122,9 @@ def delete_collection(db: Database, collection_name: str) -> None:
 
 
 def main():
-    client = connect_to_db()
+    client = connect_to_db_atlas("mongodb+srv://uradzbq_db_user:111@goit-learn-mongodb.1dyektb.mongodb.net/?appName=goit-learn-mongodb")
     db = client.cats
-    populate_db(db)
+    populate_db(db, "cats")
 
     # Реалізуйте функцію для виведення всіх записів із колекції.
     print("✅ All cats listed:")
@@ -141,7 +137,7 @@ def main():
     update_age_by_name(db, "murzik", 11)
 
     # Створіть функцію, яка дозволяє додати нову характеристику до списку features кота за ім'ям.
-    print(update_append_feature(db, "murzik", "new_feature"))
+    update_append_feature(db, "murzik", "new_feature")
 
     # Реалізуйте функцію для видалення запису з колекції за ім'ям тварини.
     delete_by_name(db, "murzik")
