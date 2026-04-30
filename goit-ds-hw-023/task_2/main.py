@@ -162,8 +162,8 @@ def main():
         delete_collection(client.db_authors, "authors")
 
         # create the collections
-        db_quotes = client.quotes
-        db_authors = client.authors
+        db_quotes = client.db_quotes
+        db_authors = client.db_authors
 
         # start scraping quotes and authors
         all_quotes_data, all_authors_data = start_scraping()
