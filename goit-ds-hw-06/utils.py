@@ -78,7 +78,7 @@ def target_info(dataframe: pd.DataFrame, target: str, transform: Literal["log", 
 def plot_features_against_target(dataframe: pd.DataFrame, continuous_features: list, target: str, imputed_masks: dict | None = None):
     for feat in continuous_features:
         print(f"Generating diagnostic profiling for: {feat}")
-        fig, axes = plt.subplots(ncols=5, figsize=(25, 6))  # Bumped height slightly to fit headers
+        fig, axes = plt.subplots(ncols=5, figsize=(25, 6))
 
         # --- Plot 1 & 2: Raw Data ---
         sns.histplot(dataframe[feat], kde=True, ax=axes[0], color="#1f77b4")
@@ -99,10 +99,48 @@ def plot_features_against_target(dataframe: pd.DataFrame, continuous_features: l
         fig.text(0.61, 0.96, "2. Does a log transformation fix the skewness?", fontsize=12, fontweight="bold", ha="center", color="#2c3e50")
 
         # --- Plot 5: Relationship with Target ---
-        # (Keeping your original internal logic for plot 5 here)
         if imputed_masks is not None:
-            # ... [Your existing imputation plotting logic goes here] ...
-            pass
+            feat_mask = imputed_masks[feat]
+            target_mask = imputed_masks[target]
+            combined_mask = (feat_mask | target_mask).astype(bool)
+
+            if feat == target:
+                plot_df = dataframe[[feat]].copy()
+                plot_df["mask"] = combined_mask
+
+                sns.scatterplot(
+                    x=plot_df[feat], y=plot_df[feat], ax=axes[4], legend=False, s=50, label="Not outlier", marker="o", alpha=0.4
+                )
+                sns.scatterplot(
+                    x=plot_df.loc[plot_df["mask"], feat],
+                    y=plot_df.loc[plot_df["mask"], feat],
+                    ax=axes[4],
+                    legend=False,
+                    color="red",
+                    s=50,
+                    marker="X",
+                    label="Outlier",
+                )
+            else:
+                plot_df = dataframe[[feat, target]].copy()
+                plot_df["mask"] = combined_mask
+
+                # Draw the scatter points, marking outliers in Red
+                sns.scatterplot(
+                    data=plot_df,
+                    x=feat,
+                    y=target,
+                    hue="mask",
+                    s=30,
+                    palette={False: "#3885BC", True: "red"},
+                    ax=axes[4],
+                    legend=False,
+                    edgecolor="white",
+                    linewidths=0.5,
+                    alpha=0.4,
+                )
+                # Draw the trend line strictly using the clean points
+                sns.regplot(data=plot_df[~plot_df["mask"]], x=feat, y=target, scatter=False, color="blue", ax=axes[4])
         else:
             sns.regplot(
                 data=dataframe,
@@ -111,7 +149,7 @@ def plot_features_against_target(dataframe: pd.DataFrame, continuous_features: l
                 ax=axes[4],
                 scatter=True,
                 scatter_kws={"s": 25, "edgecolor": "white", "linewidths": 0.5, "alpha": 0.5},
-                line_kws={"color": "red", "linewidth": 2},
+                line_kws={"color": "blue", "linewidth": 2},
             )
         axes[4].set_title("Linear Target Trend")
 
