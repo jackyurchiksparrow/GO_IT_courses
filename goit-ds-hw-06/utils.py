@@ -10,6 +10,36 @@ from scipy import stats
 
 def get_null_info(data_frame: pd.DataFrame) -> pd.DataFrame:
     feature_columns = data_frame.columns
+    rows = []  # an empty list to gather missing value metrics for each feature
+
+    for feat in feature_columns:
+        # total number of nulls in the current column
+        na_count = data_frame[feat].isna().sum()
+
+        # if any nulls, compute the missing percentage and save
+        if na_count > 0:
+            total_count = data_frame.shape[0]
+            na_percent = na_count / total_count * 100
+            rows.append((feat, na_count, total_count, na_percent))
+
+    # if no nulls
+    if len(rows) == 0:
+        print("No missing values are found in the dataframe")
+        # Note: Returns an empty list object instead of a DataFrame structure
+        return pd.DataFrame()
+
+    # Convert the collected list of tuples into a structured results DataFrame
+    df_result = pd.DataFrame(rows, columns=["Feature", "NA Count", "Total Count", "NA Percentage"])
+
+    # Sort the results so features with the highest missing values appear at the top
+    df_result = df_result.sort_values(by="NA Count", ascending=False, ignore_index=True)
+
+    # Return the finalized summary report DataFrame
+    return df_result
+
+
+def get_null_info(data_frame: pd.DataFrame) -> pd.DataFrame:
+    feature_columns = data_frame.columns
     rows = []
 
     for feat in feature_columns:
