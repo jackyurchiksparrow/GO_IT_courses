@@ -10,11 +10,11 @@ import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
 from IPython.display import display
-from numpy.linalg import matrix_rank
 from scipy import stats
 from scipy.linalg import qr as scipy_qr
+from sklearn.base import clone
 from statsmodels.api import add_constant
-from statsmodels.stats.diagnostic import het_breuschpagan, het_white
+from statsmodels.stats.diagnostic import acorr_ljungbox, het_breuschpagan, het_white
 from statsmodels.tsa.stattools import adfuller, kpss
 
 
@@ -459,8 +459,8 @@ def detect_features_to_restore_full_rank(data_frame: pd.DataFrame, target_name: 
     # Prioritize dropping features containing the specific substring
     features.sort(key=lambda x: prioritize_dropping_by not in x)
 
-    initial_matrix = data_frame.to_numpy()
-    initial_rank = matrix_rank(initial_matrix)
+    initial_matrix = data_frame.copy()
+    initial_rank = detect_perfect_multicollinearity_via_rank(initial_matrix, target_name)
     n_features = len(features)
 
     print("--- Starting Multicollinearity Check ---")
@@ -778,6 +778,51 @@ def white_test(x_features_with_added_constant: np.ndarray[np.float64], residuals
     ).style.hide(axis="index")
 
 
+@ensure_target_not_included
+@ensure_no_nulls
+@ensure_categoricals_encoded
+def find_redundant_columns_qr(df: pd.DataFrame, target_name: str) -> list:
+    """
+    Identifies linearly dependent (redundant) columns using QR decomposition with pivoting.
+
+    This function detects multi-collinearity by standardizing the features and
+    performing a pivoted QR decomposition (X * P = Q * R). Columns that are linearly
+    dependent on prior columns are pivoted to the back of the matrix, where their
+    corresponding diagonal entries in the upper triangular matrix R drop near zero.
+
+    Args:
+        df (pd.DataFrame): df_train containing both features and the target.
+        target_name (str): The name of the target column.
+
+    Returns:
+        list: A list of feature names identified as linearly dependent/redundant and safe to drop.
+
+    Raises:
+        ValueError: If features have zero variance (causing division by zero during standardization).
+
+    """
+    tol = 1e-10
+    X = df.copy()
+    cols = X.columns.tolist()
+
+    # Standardize — raw feature scales differ by orders of magnitude which
+    # causes the SVD tolerance to misclassify near-zero singular values
+    X_std = (X - X.mean()) / X.std()
+
+    _, R, P = scipy_qr(X_std.values, pivoting=True)
+
+    # Diagonal of R: near-zero entries signal linearly dependent columns
+    diag = np.abs(np.diag(R))
+    rank = int(np.sum(diag > tol * diag[0]))
+    redundant_indices = P[rank:]  # column indices pivoted to the back = redundant
+
+    redundant_cols = [cols[i] for i in redundant_indices]
+
+    print(f"Rank: {rank} / {len(cols)}")
+    print(f"Redundant columns ({len(redundant_cols)}): {redundant_cols}")
+    return redundant_cols
+
+
 @ensure_no_nulls
 @ensure_categoricals_encoded
 @ensure_target_not_included
@@ -969,17 +1014,22 @@ def bootstrap_coefficients(
 @ensure_target_not_included
 def auto_iqr_winsorization_limits(df: pd.DataFrame, target_name: str, k: float = 1.5) -> tuple[dict, pd.DataFrame]:
     """
-    Автоматично розраховує абсолютні межі вінзоризації на базі IQR та генерує маски викидів.
+    Calculates Tukey's fence outlier boundaries and flags values for winsorization.
+
+    It calculates winsorization boundaries with IQR automatically, then logs the expected impact per feature and builds a global outlier mask.
 
     Args:
-        df (pd.DataFrame): Тренувальний датасет.
-        target_name (str): Target name.
-        k (float): Коефіцієнт жорсткості фільтра IQR (1.5 або 3.0).
+        df (pd.DataFrame): training df.
+        target_name (str): The name of the target column.
+        k (float, default=1.5): The multiplier for the IQR to determine the outlier fences. A value of 1.5 defines standard outliers, while 3.0 defines extreme outliers.
 
     Returns:
-        tuple[dict, pd.DataFrame]:
-            - Словник з парами {feature: (lower_bound, upper_bound)}
-            - DataFrame масок (True там, де значення є викидом і буде кліпнуте)
+        tuple[dict, pd.DataFrame]: A tuple containing:
+            - winsor_limits (dict): Dictionary mapping feature names to a tuple of their calculated
+              clipping boundaries: {feature_name: (lower_bound, upper_bound)}.
+            - winsorized_masks (pd.DataFrame): A boolean DataFrame of identical dimensions to the
+              input features, where True signifies that the specific value is an outlier that
+              would be capped.
 
     """
     features = df.columns
@@ -1032,8 +1082,7 @@ def check_stationarity(
     series: pd.Series,
     target_name: str = None,
     alpha: float = 0.05,
-    regression: str = "c",
-    window: int = None,
+    window: int = None,  # leave at default, if the rolling mean looks jagged, increase it; if it looks flat regardless of what you do, the feature probably has no drift and you can skip the visual check
     plot: bool = True,
     verbose: bool = True,
 ):
@@ -1053,8 +1102,6 @@ def check_stationarity(
         series (pd.Series): Time series to test (e.g. the target, hourly-indexed).
         target_name (str): Optional, used only for print/plot labeling.
         alpha (float, default=0.05): Significance level for both tests.
-        regression (str, default='c'): 'c' (level) or 'ct' (level+trend). Passed to ADF
-            directly ('ctt'/'n' also valid for ADF only); mapped to KPSS's 'c'/'ct'.
         window (int): Rolling window for the mean/std plot. Defaults to a small fraction
             of series length -- override with something tied to your data's natural cycle
             (e.g. 24 for hourly data with a daily cycle).
@@ -1071,17 +1118,16 @@ def check_stationarity(
         raise ValueError("Series too short for stationarity testing (need more observations).")
 
     # --- ADF ---
-    adf_stat, adf_pvalue, adf_usedlag, adf_nobs, adf_crit = adfuller(s.values, regression=regression, autolag="AIC")[:5]
+    adf_stat, adf_pvalue, adf_usedlag, adf_nobs, adf_crit = adfuller(s.values, regression="c", autolag="AIC")[:5]
     adf_is_stationary = adf_pvalue < alpha
 
-    # --- KPSS --- (only supports 'c' / 'ct'; map anything else to 'c')
-    kpss_regression = "ct" if regression == "ct" else "c"
+    # --- KPSS ---
     with warnings.catch_warnings():
         # statsmodels caps KPSS p-values to its lookup-table range (e.g. "p-value is
         # smaller than the smallest p-value tested") -- silenced here for readability,
         # but the printed p-value can be pinned at 0.01 or 0.10 rather than exact.
         warnings.simplefilter("ignore")
-        kpss_stat, kpss_pvalue, kpss_usedlag, kpss_crit = kpss(s.values, regression=kpss_regression, nlags="auto")
+        kpss_stat, kpss_pvalue, kpss_usedlag, kpss_crit = kpss(s.values, regression="c", nlags="auto")
     kpss_is_stationary = kpss_pvalue >= alpha  # opposite direction from ADF
 
     # --- Combined verdict ---
@@ -1136,3 +1182,233 @@ def check_stationarity(
         "verdict": verdict,
         "agreement": agreement,
     }
+
+
+def plot_stationarity_diagnostic(data_frame: pd.DataFrame, column_name: str, window_size: int = 30, segment_by: str | None = None):
+    """
+    Plots the rolling mean and standard deviation of a continuous variable.
+
+    This diagnostic tool visualizes how the mean and variance of a time series
+    evolve over time to evaluate its stationarity. It supports classification and regression.
+
+    Args:
+        data_frame (pd.DataFrame): The input DataFrame containing the time series and optional grouping metadata (for @segment_by).
+        column_name (str): The name of the column containing the continuous numerical values to analyze.
+        window_size (int, default=30): The rolling window size used to calculate the moving average and standard deviation.
+        segment_by (str, optional): The name of the categorical column used to segment and group the data before plotting. Defaults to None, which analyzes the series globally.
+
+    Returns:
+        None: Displays a dual-axis matplotlib line plot.
+
+    """
+    fig, ax1 = plt.subplots(figsize=(14, 6))
+    ax2 = ax1.twinx()
+
+    if segment_by is None:
+        s = data_frame[column_name]
+        ax1.plot(s.values, color="blue", alpha=0.25, label="raw")
+        ax1.plot(s.rolling(window_size).mean().values, color="red", linewidth=2, label=f"rolling mean (w={window_size})")
+        ax2.plot(s.rolling(window_size).std().values, color="black", linewidth=1.5, linestyle="--", label="rolling std (right axis)")
+    else:
+        colors = plt.cm.tab10.colors
+        for i, (label, g) in enumerate(data_frame.groupby(segment_by)):
+            s = g[column_name].reset_index(drop=True)  # reset so x-axis is contiguous
+            c = colors[i % len(colors)]
+            ax1.plot(s.values, color=c, alpha=0.15)
+            ax1.plot(s.rolling(window_size, min_periods=1).mean().values, color=c, linewidth=2, label=f"mean — class {label}")
+            ax2.plot(s.rolling(window_size, min_periods=1).std().values, color=c, linewidth=1, linestyle="--", label=f"std — class {label}")
+
+    ax1.set_ylabel("Rolling mean", fontsize=11)
+    ax2.set_ylabel("Rolling std", fontsize=11)
+    ax1.set_title(f"Stationarity: {column_name}" + (f"  |  by {segment_by}" if segment_by else ""))
+
+    # combine legends from both axes
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=9)
+    plt.tight_layout()
+    plt.show()
+
+
+@ensure_no_nulls
+@ensure_categoricals_encoded
+def screen_autocorrelation_stage1(
+    df: pd.DataFrame,
+    target_name: str,
+    max_lag: int = 40,
+    alpha: float = 0.05,
+    mode: str = "regression",
+) -> pd.DataFrame:
+    """
+    Stage 1: screen raw series for temporal autocorrelation BEFORE fitting any model.
+
+    Goal: identify which features (and target, for regression) have temporal memory worth exploiting via lag features.
+
+    Regression: checks all columns including target as a single chronological series.
+    Classification: checks each feature WITHIN each class separately to avoid confusing genuine within-state persistence with class-transition jumps.
+    The target (discrete labels) is excluded — Ljung-Box on categorical integers
+    would just detect that classes persist over consecutive rows, which is trivially
+    known and not actionable.
+
+    Args:
+        df: df_train sorted chronologically; with only numerical continuous features
+        target_name: Target column name (regardless of whether it is discrete or not)
+        max_lag: Joint test covers lags 1 through max_lag.
+        alpha: Flagging threshold.
+        mode: "regression" or "classification".
+
+    Returns:
+        DataFrame of results sorted by p-value ascending (most suspicious first).
+
+    """
+    records = []
+
+    if mode == "regression":
+        cols_to_check = df.columns  # target included — it's continuous and meaningful to check
+        for col in cols_to_check:
+            series = df[col].to_numpy()
+            lb_test = acorr_ljungbox(series, lags=[max_lag], return_df=True)
+            records.append(
+                {
+                    "Feature": col,
+                    "Is Target": col == target_name,
+                    f"LB_Stat (Lag {max_lag})": lb_test.loc[max_lag, "lb_stat"],
+                    "p-value": lb_test.loc[max_lag, "lb_pvalue"],
+                    "Flagged": lb_test.loc[max_lag, "lb_pvalue"] < alpha,
+                },
+            )
+
+    elif mode == "classification":
+        feature_cols = [c for c in df.columns if c != target_name]
+        for class_label in df[target_name].unique():
+            class_df = df[df[target_name] == class_label]
+            for col in feature_cols:
+                series = class_df[col].to_numpy()
+                if len(series) <= max_lag:
+                    # not enough rows in this class to test at this lag depth
+                    continue
+                lb_test = acorr_ljungbox(series, lags=[max_lag], return_df=True)
+                records.append(
+                    {
+                        "Class": class_label,
+                        "Feature": col,
+                        f"LB_Stat (Lag {max_lag})": lb_test.loc[max_lag, "lb_stat"],
+                        "p-value": lb_test.loc[max_lag, "lb_pvalue"],
+                        "Flagged": lb_test.loc[max_lag, "lb_pvalue"] < alpha,
+                    },
+                )
+
+    return pd.DataFrame(records).sort_values("p-value").reset_index(drop=True)
+
+
+@ensure_categoricals_encoded
+@ensure_no_nulls
+def run_acorr_ljungbox_for_classification_residuals(
+    df: pd.DataFrame,
+    target_name: str,
+    class_labels: list,
+    model,  # any sklearn-compatible classifier with predict_proba
+    max_lag: int = 20,
+    alpha: float = 0.05,
+) -> pd.DataFrame:
+    """
+    Evaluates temporal dependency in classifier residuals using a One-vs-Rest strategy.
+
+    For each class label, this function trains a fresh, binary instance of the model
+    (the specified class vs. all other classes). It calculates the raw residuals
+    (y_true - p_predicted) and runs a joint Ljung-Box test up to `max_lag`. This
+    helps determine if the model is failing to exploit temporal structures within
+    specific activity states or classes.
+
+    Args:
+        df (pd.DataFrame): Training DataFrame sorted chronologically.
+        target_name (str): The name of the categorical target/label column.
+        class_labels (list): List of unique class labels present in the target column to test individually.
+        model (BaseEstimator): An unfitted, scikit-learn compatible classifier object implements the `predict_proba` method.
+        max_lag (int, default=20): The maximum lag depth included in the joint Ljung-Box test.
+        alpha (float, default=0.05): The significance level used to flag remaining autocorrelation in residuals.
+
+    Returns:
+        pd.DataFrame: A summary DataFrame containing one row per class with columns:
+            - Class: The class label evaluated.
+            - LB_Stat (Lag X): The calculated Ljung-Box test statistic.
+            - p-value: The test p-value.
+            - Flagged: Boolean indicating if significant residual correlation remains.
+
+    """
+    df_copy = df.copy()
+    X = df_copy.drop(columns=[target_name])
+    if "const" in X.columns:
+        X = X.drop(columns=["const"])
+
+    records = []
+    for class_label in class_labels:
+        y_binary = (df_copy[target_name] == class_label).astype(int)
+
+        # clone() creates a fresh unfitted copy — prevents state leaking between classes
+        clf = clone(model)
+        clf.fit(X, y_binary)
+        p_hat = clf.predict_proba(X)[:, 1]
+        resid = y_binary.to_numpy() - p_hat
+
+        lb_test = acorr_ljungbox(resid, lags=[max_lag], return_df=True)
+        records.append(
+            {
+                "Class": class_label,
+                f"LB_Stat (Lag {max_lag})": lb_test.loc[max_lag, "lb_stat"],
+                "p-value": lb_test.loc[max_lag, "lb_pvalue"],
+                "Flagged": lb_test.loc[max_lag, "lb_pvalue"] < alpha,
+            },
+        )
+
+    return pd.DataFrame(records)
+
+
+@ensure_no_nulls
+@ensure_categoricals_encoded
+def run_acorr_ljungbox_for_regression_residuals(
+    df: pd.DataFrame,
+    target_name: str,
+    model,  # any sklearn-compatible regressor with predict
+    max_lag: int = 20,
+    alpha: float = 0.05,
+) -> pd.DataFrame:
+    """
+    Evaluates temporal dependency in regressor residuals.
+
+    This function fits a fresh instance of the provided regression model on the
+    chronological features, computes the raw forecasting errors (y_true - y_pred),
+    and applies a joint Ljung-Box test. If the residuals are flagged, it means the
+    model has left unexploited time-series signals on the table (e.g., missing lags).
+
+    Args:
+        df (pd.DataFrame): Training DataFrame sorted chronologically.
+        target_name (str): The name of the continuous numerical target column.
+        model (BaseEstimator): An unfitted, scikit-learn compatible regressor object implements the `predict` method.
+        max_lag (int, default=20): The maximum lag depth included in the joint Ljung-Box test.
+        alpha (float, default=0.05): The significance level used to flag remaining autocorrelation in residuals.
+
+    Returns:
+        pd.DataFrame: A single-row DataFrame containing the overall diagnostic results:
+            - LB_Stat (Lag X): The calculated Ljung-Box test statistic.
+            - p-value: The test p-value.
+            - Flagged: Boolean indicating if significant residual correlation remains.
+
+    """
+    X = df.drop(columns=[target_name])
+    y = df[target_name]
+
+    reg = clone(model)
+    reg.fit(X, y)
+    resid = y.to_numpy() - reg.predict(X)
+
+    lb_test = acorr_ljungbox(resid, lags=[max_lag], return_df=True)
+    return pd.DataFrame(
+        [
+            {
+                f"LB_Stat (Lag {max_lag})": lb_test.loc[max_lag, "lb_stat"],
+                "p-value": lb_test.loc[max_lag, "lb_pvalue"],
+                "Flagged": lb_test.loc[max_lag, "lb_pvalue"] < alpha,
+            },
+        ],
+    )
