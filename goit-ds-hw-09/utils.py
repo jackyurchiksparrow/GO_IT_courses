@@ -151,10 +151,10 @@ def get_null_info(data_frame: pd.DataFrame) -> pd.DataFrame:
     return df_result
 
 
-def target_info(data_frame: pd.DataFrame, target: str, transform: Literal["log", "log1p"] | None = None):
+def target_info(data_frame: pd.DataFrame, target: str, transform: Literal["log", "log1p"] | None = None) -> pd.DataFrame:
     if target not in data_frame.columns:
         print(f"{target} is not in df!")
-        return
+        return pd.DataFrame()
 
     print("Unique target values:")
     target_col = data_frame[target]
@@ -170,8 +170,6 @@ def target_info(data_frame: pd.DataFrame, target: str, transform: Literal["log",
     if target_col.isna().any():
         target_values.loc["NaN"] = [target_col.isna().sum(), np.round(target_col.isna().sum() / len(data_frame) * 100, 2)]
 
-    display(target_values)
-
     # 1. Check transformation and setup layout
     if transform is None:
         ncols = 1
@@ -181,7 +179,7 @@ def target_info(data_frame: pd.DataFrame, target: str, transform: Literal["log",
         figsize = (20, 4)
     else:
         print("Invalid 3rd param:", transform)
-        return
+        return target_values
 
     # 2. Create the subplots dynamically
     fig, ax = plt.subplots(ncols=ncols, nrows=1, figsize=figsize)
@@ -210,6 +208,7 @@ def target_info(data_frame: pd.DataFrame, target: str, transform: Literal["log",
         ax[1].set_ylabel("Density")
 
     plt.show()
+    return target_values
 
 
 # ─────────────────────────────────────────────────────────────────────────────
