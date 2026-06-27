@@ -156,7 +156,6 @@ def target_info(data_frame: pd.DataFrame, target: str, transform: Literal["log",
         print(f"{target} is not in df!")
         return pd.DataFrame()
 
-    print("Unique target values:")
     target_col = data_frame[target]
 
     target_values = pd.DataFrame(
