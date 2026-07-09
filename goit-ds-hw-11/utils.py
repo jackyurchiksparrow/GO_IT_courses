@@ -1457,25 +1457,3 @@ def run_acorr_ljungbox_for_regression_residuals(
             },
         ],
     )
-
-
-def seed_everything(seed=42):
-    """Fixes seeds to reproduce outcomes. Returns a NumPy random generator."""
-    random.seed(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    # CUDA 10.2 or later
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-
-    # PyTorch seeding
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # if using multi-GPU
-
-    # CuDNN determinism
-    torch.use_deterministic_algorithms(True)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-    # numpy: create and return a generator instance
-    rng = np.random.default_rng(seed)
-    return rng
