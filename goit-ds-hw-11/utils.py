@@ -13,6 +13,7 @@ import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
 import torch
+from matplotlib.ticker import MaxNLocator
 from scipy import stats
 from scipy.linalg import qr as scipy_qr
 from sklearn.base import clone
@@ -1457,3 +1458,46 @@ def run_acorr_ljungbox_for_regression_residuals(
             },
         ],
     )
+
+
+def seed_everything(seed=42):
+    """Fixes seeds to reproduce outcomes. Returns a NumPy random generator."""
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
+    # PyTorch seeding
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if using multi-GPU
+
+    rng = np.random.default_rng(seed)
+    return rng
+
+
+def plot_loss_acc_per_ep(train_losses, valid_losses, train_accuracies, valid_accuracies):
+    """Plots the metrics for training and validation performance comparison."""
+    print("Smoothed scores over epochs groupd by folds:")
+    for ep, (tl, vl, ta, va) in enumerate(zip(train_losses, valid_losses, train_accuracies, valid_accuracies), 1):
+        print(f"Epoch {ep:>2}: train_loss={tl:.4f}  val_loss={vl:.4f}  train_acc={ta:.4f}  val_acc={va:.4f}")
+
+    print()
+    fix, axes = plt.subplots(ncols=2, figsize=(15, 4))
+
+    # --- first plot: train and validation losses ---
+    axes[0].plot(np.arange(len(train_losses)), train_losses, ".-")
+    axes[0].plot(np.arange(len(valid_losses)), valid_losses, ".-")
+    axes[0].legend(["train", "validation"])
+    axes[0].set_title("Loss")
+    axes[0].set_xlabel("Epoch")
+    axes[0].xaxis.set_major_locator(MaxNLocator(integer=True))  # Forces integer
+    axes[0].grid()
+
+    # --- second plot: train and validation accuracies ---
+    axes[1].plot(np.arange(len(train_accuracies)), train_accuracies, ".-")
+    axes[1].plot(np.arange(len(valid_accuracies)), valid_accuracies, ".-")
+    axes[1].legend(["train", "validation"])
+    axes[1].set_title("Accuracy")
+    axes[1].set_xlabel("Epoch")
+    axes[1].xaxis.set_major_locator(MaxNLocator(integer=True))  # Forces integer
+    axes[1].grid()
