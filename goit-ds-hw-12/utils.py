@@ -1477,7 +1477,7 @@ def seed_everything(seed=42):
 
 def plot_loss_acc_per_ep(train_losses, valid_losses, train_accuracies, valid_accuracies):
     """Plots the metrics for training and validation performance comparison."""
-    print("Smoothed scores over epochs groupd by folds:")
+    print("Smoothed scores over epochs grouped by folds:")
     for ep, (tl, vl, ta, va) in enumerate(zip(train_losses, valid_losses, train_accuracies, valid_accuracies), 1):
         print(f"Epoch {ep:>2}: train_loss={tl:.4f}  val_loss={vl:.4f}  train_acc={ta:.4f}  val_acc={va:.4f}")
 
