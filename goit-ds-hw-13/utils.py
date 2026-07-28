@@ -7,6 +7,7 @@ from functools import wraps
 from itertools import combinations
 from typing import Literal
 
+import keras
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -305,9 +306,7 @@ def plot_distribution_diagnostics(series: pd.Series, axes, color="#1f77b4", bins
     plot_qq(series, axes[1], title=f"{label} QQ Plot".strip())
 
 
-def plot_features_against_target(
-    data_frame: pd.DataFrame, features: list, target_name: str, bins: dict, imputed_masks: dict | None = None, discrete_threshold: int = 15
-):
+def plot_features_against_target(data_frame: pd.DataFrame, features: list, target_name: str, bins: dict, imputed_masks: dict | None = None, discrete_threshold: int = 15):
     """
     Generates a diagnostic grid for features mapped against a target variable.
 
@@ -994,9 +993,7 @@ def bootstrap_coefficients(
         else:
             # moving-block bootstrap: sample blocks with replacement and concat
             chosen = [blocks[rng.randint(0, len(blocks))] for _ in range(n_blocks_needed)]  # select the built block 'n_blocks_needed' times
-            sample = (
-                pd.concat(chosen, ignore_index=True).iloc[:n].reset_index(drop=True)
-            )  # concat the current selected set of blocks into a data_frame
+            sample = pd.concat(chosen, ignore_index=True).iloc[:n].reset_index(drop=True)  # concat the current selected set of blocks into a data_frame
 
         # drop rows with NaNs for safety (rare if 'data_frame' cleaned)
         sample = sample[[target_name, *list(predictors)]].dropna()
@@ -1116,8 +1113,7 @@ def auto_iqr_winsorization_limits(df: pd.DataFrame, target_name: str, k: float =
         total_outliers = lower_sum + upper_sum
 
         print(
-            f"{feat:<10}: {total_outliers / len(X):.2%} ({upper_sum} upper and {lower_sum} lower) "
-            f"of {feat} would be capped (Limits: [{lower_bound:.4f}, {upper_bound:.4f}])",
+            f"{feat:<10}: {total_outliers / len(X):.2%} ({upper_sum} upper and {lower_sum} lower) of {feat} would be capped (Limits: [{lower_bound:.4f}, {upper_bound:.4f}])",
         )
 
     return winsor_limits, winsorized_masks
@@ -1188,12 +1184,10 @@ def check_stationarity(
         label = f" [{target_name}]" if target_name else ""
         print(f"--- Stationarity check{label} (n={n}) ---")
         print(
-            f"ADF  stat={adf_stat:.4f}  p={adf_pvalue:.4f}  used_lag={adf_usedlag}  "
-            f"-> {'stationary' if adf_is_stationary else 'non-stationary'}",
+            f"ADF  stat={adf_stat:.4f}  p={adf_pvalue:.4f}  used_lag={adf_usedlag}  -> {'stationary' if adf_is_stationary else 'non-stationary'}",
         )
         print(
-            f"KPSS stat={kpss_stat:.4f}  p={kpss_pvalue:.4f}  used_lag={kpss_usedlag}  "
-            f"-> {'stationary' if kpss_is_stationary else 'non-stationary'}",
+            f"KPSS stat={kpss_stat:.4f}  p={kpss_pvalue:.4f}  used_lag={kpss_usedlag}  -> {'stationary' if kpss_is_stationary else 'non-stationary'}",
         )
         print(f"=> Verdict: {verdict.upper()}" + ("" if agreement else " -- tests disagree, check the plot before deciding."))
 
@@ -1462,16 +1456,22 @@ def run_acorr_ljungbox_for_regression_residuals(
 
 def seed_everything(seed=42):
     """Fixes seeds to reproduce outcomes. Returns a NumPy random generator."""
-    random.seed(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    # fmt: off
+    random.seed(seed)                                       # seeds Python's built-in "random" module
+    np.random.seed(seed)                                    # legacy global stream (some libs use it)
+    keras.utils.set_random_seed(seed)                       # python + numpy + torch backend
+    os.environ["PYTHONHASHSEED"] = str(seed)                # seeds child processes of DataLoaders with multiple background workers (num_workers > 0)
 
-    # PyTorch seeding
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # if using multi-GPU
+    torch.cuda.manual_seed_all(seed)                        # if using multi-GPU
 
-    rng = np.random.default_rng(seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"       # gives cuBLAS (the matrix-multiplication library) a chunk of memory to store intermediate sums
+    torch.backends.cudnn.benchmark = False                  # forces to use only one hard-coded CNN algorithm instead of searching for the fastest every time
+    torch.backends.cudnn.deterministic = True               # makes the previous line choose the algorithm that doesn't rely on atomic addition (slows training by ~14%; scales even more for heavy nets)
+    torch.use_deterministic_algorithms(True)                # forces every other single PyTorch function to use a deterministic path (scatter, gather, interpolations, pooling etc.)
+
+    rng = np.random.default_rng(seed)                       # # isolated Generator to pass around explicitly
     return rng
 
 
