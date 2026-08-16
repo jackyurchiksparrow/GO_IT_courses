@@ -1504,25 +1504,24 @@ def plot_loss_acc_per_ep(train_losses, valid_losses, train_accuracies, valid_acc
 
 
 def debug_tuner(tuner):
-    trial_list = []
-
-    # Loop through all trials stored in the tuner's oracle
+    """Summarise a finished KerasTuner search as a sorted DataFrame."""
+    rows = []
     for trial_id, trial in tuner.oracle.trials.items():
-        row = {
-            "trial_id": trial_id,
-            "score": trial.score,  # This will be our val_accuracy or val_loss
-            "best_epoch": trial.best_step + 1,  # best epoch from early stopping
-        }
-        # Unpack and add the specific hyperparameters chosen for this trial
+        row = {"trial_id": trial_id, "score": trial.score}
         row.update(trial.hyperparameters.values)
-        trial_list.append(row)
 
-    # Convert to DataFrame
-    df_results = pd.DataFrame(trial_list)
+        # every metric the tuner kept, taken at the trial's best epoch.
+        # validation metrics already carry a "val_" prefix; label the rest
+        # "train_" so the two are never confused in the table.
+        for name in trial.metrics.metrics:
+            history = trial.metrics.get_history(name)
+            if history:
+                label = name if name.startswith("val_") else f"train_{name}"
+                row[label] = history[0].value[0]
 
-    # Sort them so the best-performing models are at the top
-    # (Change ascending=True if we are optimizing for loss instead of accuracy)
-    df_results = df_results.sort_values(by="score", ascending=False)
+        row["best_epoch"] = trial.best_step + 1
+        rows.append(row)
 
-    # Display the neat table!
-    return df_results
+    df = pd.DataFrame(rows)
+    df = df[[c for c in df.columns if c != "best_epoch"] + ["best_epoch"]]
+    return df.sort_values("score", ascending=False, ignore_index=True)
