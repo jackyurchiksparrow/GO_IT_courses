@@ -616,6 +616,7 @@ def perform_advanced_vif_analysis(
         {
             "feature": predictors,
             "VIF": vif_values,
+            "R2": 1 - 1 / vif_values,
             "theta": theta_values,  # Tracks mathematical stability (must be < 0.20)
             "matrix_kappa": matrix_kappa,  # Broadcasts the single matrix score to all rows
         },
